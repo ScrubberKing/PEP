@@ -25,14 +25,20 @@
   .step-label { font-family: 'Roboto Mono', monospace; font-size: 0.72rem; font-weight: 500; color: var(--teal); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
   .step-title { font-family: 'Roboto', sans-serif; font-size: 2rem; font-weight: 300; color: var(--navy); line-height: 1.15; margin-bottom: 8px; }
   .step-desc { font-size: 0.9rem; color: var(--mid); line-height: 1.6; }
-  .card { background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 16px; box-shadow: var(--shadow); overflow: visible; }
+  .card { background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 16px; box-shadow: var(--shadow); }
   .card-title { font-size: 0.78rem; font-weight: 600; font-family: 'Roboto Mono', monospace; text-transform: uppercase; letter-spacing: 1px; color: var(--mid); margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
   /* Multi-procedure pairs */
-  .pair-block { border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 12px; background: white; position: relative; overflow: visible; }
+  .pair-block { border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 12px; background: white; position: relative; }
   .pair-block .pair-num { font-family: 'Roboto Mono', monospace; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--mid); margin-bottom: 14px; }
   .pair-remove { position: absolute; top: 12px; right: 14px; background: none; border: none; color: var(--mid); cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 2px 6px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
   .pair-remove:hover { color: var(--red); background: #FEE2E2; }
-  .proc-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px; align-items: start; overflow: visible; }
+  .proc-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px; align-items: start; }
+  /* Give each proc-row column a stacking context so native selects render above siblings */
+  .proc-row > div { position: relative; z-index: 10; }
+  .proc-row > div:hover, .proc-row > div:focus-within { z-index: 20; }
+  /* Escalate entire pair-block when a select inside it is active */
+  .pair-block { z-index: 1; }
+  .pair-block:focus-within { z-index: 30; }
   /* Savings callout */
   .savings-callout { background: #1A2533; border-radius: 12px; padding: 24px 28px; margin-top: 20px; margin-bottom: 4px; }
   .savings-callout-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.5); font-family: 'Roboto Mono', monospace; margin-bottom: 16px; }
@@ -199,6 +205,12 @@ function splitCSVLine(line) {
   return fields;
 }
 
+// Safe numeric parse — strips locale formatting (commas) before parsing
+function parseNum(v) {
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v || '').replace(/,/g, '')) || 0;
+}
+
 function isTrue(v) {
   return typeof v === 'string' && v.trim().toUpperCase() === 'TRUE';
 }
@@ -214,8 +226,8 @@ function joinEquipmentRates(eqRows, rateRows) {
     .forEach(r => {
       const key = makeKey(r.category, r.size);
       rateMap[key] = {
-        sqft: parseFloat(r.sqft_per_hr)        || parseFloat(r.sqft) || 0,
-        mins: parseFloat(r.mins_per_1000sqft)  || parseFloat(r.mins) || 0,
+        sqft: parseNum(r.sqft_per_hr)       || parseNum(r.sqft) || 0,
+        mins: parseNum(r.mins_per_1000sqft) || parseNum(r.mins) || 0,
       };
     });
 
@@ -225,10 +237,10 @@ function joinEquipmentRates(eqRows, rateRows) {
     .forEach(r => {
       const cat = r.category;
       if (!map[cat]) map[cat] = [];
-      const key   = makeKey(r.category, r.size);
-      const rate  = rateMap[key] || { sqft: 0, mins: 0 };
+      const key  = makeKey(r.category, r.size);
+      const rate = rateMap[key] || { sqft: 0, mins: 0 };
       // If mins not in rates table, derive from sqft
-      const mins  = rate.mins || (rate.sqft > 0 ? 60000 / rate.sqft : 0);
+      const mins = rate.mins || (rate.sqft > 0 ? 60000 / rate.sqft : 0);
       map[cat].push({
         size:     r.size,
         model:    r.model   || '',
@@ -540,6 +552,7 @@ function renderStep5() {
 
   // Savings callout
   h += '<div class="savings-callout">';
+  h += '<div class="savings-callout-title">💡 You Can\'t Afford NOT to Buy This</div>';
   h += '<div class="savings-callout-rows">';
   h += '<div class="sc-item positive"><div class="sc-label">Monthly Labor Savings</div><div class="sc-val">'+fmtC(r.savingsPerMonth)+'</div></div>';
   h += '<div class="sc-item payment"><div class="sc-label">Monthly Payment</div><div class="sc-val">'+(leaseAmt>0?fmtC(leaseAmt):'—')+'</div></div>';
