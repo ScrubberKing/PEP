@@ -55,9 +55,6 @@
   /* ── TOOLTIP ── */
   .tooltip-wrap{position:relative;display:inline-flex;align-items:center;gap:5px;cursor:default;}
   .tooltip-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--teal);color:white;font-size:0.65rem;font-weight:700;font-family:'Roboto',sans-serif;cursor:pointer;flex-shrink:0;line-height:1;}
-  .tooltip-box{visibility:hidden;opacity:0;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);width:280px;background:var(--navy);color:white;font-size:0.78rem;font-family:'Roboto',sans-serif;font-weight:400;line-height:1.5;padding:10px 14px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.25);transition:opacity 0.15s;z-index:9999;pointer-events:none;}
-  .tooltip-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--navy);}
-  .tooltip-wrap:hover .tooltip-box{visibility:visible;opacity:1;}
 
   .savings-callout{background:#1A2533;border-radius:12px;padding:24px 28px;margin-top:20px;margin-bottom:4px;}
   .savings-callout-title{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.5);font-family:'Roboto Mono',monospace;margin-bottom:16px;}
@@ -240,6 +237,8 @@
   <div class="step-pills" id="stepPills"></div>
 </header>
 <div class="shell" id="app"></div>
+<!-- Single shared tooltip — appended to body, outside ALL stacking contexts -->
+<div id="globalTooltip" style="display:none;position:fixed;z-index:2147483647;width:420px;background:#1A2533;color:white;font-size:0.78rem;font-family:'Roboto',sans-serif;font-weight:400;line-height:1.5;padding:10px 14px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.35);pointer-events:none;"></div>
 <script>
 const SHEETS = {
   equipment:'https://docs.google.com/spreadsheets/d/e/2PACX-1vTAicc4wFb8Hz_szUiRFYpimvZ1y97K5P_2qhKXM5XTiOwFW2AcxXoYQnJ-WjqY2Z81eze6wZOcvDWM/pub?gid=0&single=true&output=csv',
@@ -391,7 +390,8 @@ function esc(v){return String(v||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'
 const ISSA_DISCLAIMER = `<div class="issa-disclaimer"><span class="issa-icon">ℹ</span><span><strong>Cleaning time source:</strong> Production rates are based on ISSA 612 Cleaning Times &amp; Tasks Calculator (Practical performance values). Actual results may vary based on facility conditions, operator proficiency, and equipment maintenance.</span></div>`;
 
 // Rider tooltip HTML
-const RIDER_TOOLTIP = `<span class="tooltip-wrap"><span class="tooltip-icon">?</span><span class="tooltip-box">Rider machines allow an operator to sit rather than walk, covering ground faster. ISSA production rates for riders reflect this speed advantage, but real-world productivity often exceeds the published figure. This bonus (0–50%) lets you apply an additional productivity factor on top of the ISSA rate when your experience shows the rider consistently outperforms the table. Default is 25%. Set to 0% to use the ISSA rate as-is.</span></span>`;
+const RIDER_TIP_TEXT = `Rider scrubbers outperform walk-behind machines not just because of machine speed — the operator is seated and experiences reduced fatigue compared to an operator using a walk-behind scrubber. This allows the operator to have more energy for other tasks. A rider operator also maintains consistent pace from the first pass to the last. ISSA production rates for riders already reflect their higher speed, but real-world throughput — especially in longer shifts or large-area cleans — routinely exceeds published figures due to this fatigue advantage. This bonus (0–50%) applies an additional productivity factor on top of the ISSA rate. Default is 25%. Set to 0% to use the ISSA rate as-is.`;
+const RIDER_TOOLTIP = `<span class="tooltip-wrap"><span class="tooltip-icon" data-tip="${RIDER_TIP_TEXT}">?</span></span>`;
 
 function render(){
   renderPills();
@@ -701,6 +701,56 @@ const FALLBACK_TASKS=["High dusting","Scrub & recoat floors","Disinfect trash ca
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  FALLBACK DATA — END                                                         ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
+// ── GLOBAL TOOLTIP ───────────────────────────────────────────────────────────
+// The tooltip div lives directly on <body> — completely outside the app's
+// stacking contexts, sticky header, and any overflow:hidden ancestors.
+// Icons carry their text in data-tip="..."; JS positions the shared box.
+(function(){
+  const tip = document.getElementById('globalTooltip');
+  let hideTimer = null;
+
+  function show(icon) {
+    const text = icon.getAttribute('data-tip');
+    if (!text) return;
+    clearTimeout(hideTimer);
+    tip.textContent = text;
+    tip.style.display = 'block';
+    tip.style.opacity = '0';
+
+    // Measure after display:block so offsetWidth/Height are real
+    requestAnimationFrame(function() {
+      const r = icon.getBoundingClientRect();
+      const tw = tip.offsetWidth;
+      const th = tip.offsetHeight;
+      let left = r.left + r.width / 2 - tw / 2;
+      let top  = r.top - th - 10;
+      // clamp horizontally
+      left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+      // flip below if would go above viewport
+      if (top < 8) top = r.bottom + 10;
+      tip.style.left = left + 'px';
+      tip.style.top  = top  + 'px';
+      tip.style.transition = 'opacity 0.15s';
+      tip.style.opacity = '1';
+    });
+  }
+
+  function hide() {
+    hideTimer = setTimeout(function() {
+      tip.style.opacity = '0';
+      setTimeout(function(){ tip.style.display = 'none'; }, 150);
+    }, 80);
+  }
+
+  document.addEventListener('mouseover', function(e) {
+    const icon = e.target.closest('.tooltip-icon[data-tip]');
+    if (icon) show(icon);
+  });
+  document.addEventListener('mouseout', function(e) {
+    const icon = e.target.closest('.tooltip-icon[data-tip]');
+    if (icon) hide();
+  });
+})();
 init();
 </script>
 </body>
